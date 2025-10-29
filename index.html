@@ -27,11 +27,16 @@
       color: #ddd;
       font-family: monospace;
     }
+    input[type="checkbox"] {
+      width: auto;
+      margin-right: 0.5rem;
+    }
     button {
       background: #61dafb;
       color: #000;
       cursor: pointer;
       font-weight: bold;
+      margin-top: 1rem;
     }
     button:hover {
       background: #4ec3e0;
@@ -49,12 +54,31 @@
       margin-top: 2rem;
     }
 
-    /* Syntax highlighting for JSON */
+    /* Syntax highlighting */
     .string { color: #98c379; }
     .number { color: #d19a66; }
     .boolean { color: #56b6c2; }
     .null { color: #c678dd; }
     .key { color: #e06c75; }
+
+    .headers-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr auto;
+      gap: 0.5rem;
+      align-items: center;
+    }
+    .headers-grid input {
+      width: 100%;
+    }
+    .headers-grid button {
+      width: 100%;
+      background: #444;
+      color: #eee;
+      border: none;
+    }
+    .headers-grid button:hover {
+      background: #666;
+    }
   </style>
 </head>
 <body>
@@ -72,6 +96,18 @@
   <label for="body">JSON Body (for POST)</label>
   <textarea id="body" rows="8" placeholder='{"key": "value"}'></textarea>
 
+  <label>
+    <input type="checkbox" id="includeCreds"> Include credentials (cookies / HTTP auth)
+  </label>
+
+  <h3>Custom Headers</h3>
+  <div id="headers-container" class="headers-grid">
+    <input type="text" placeholder="Header name (e.g. Cookie)" class="header-key">
+    <input type="text" placeholder="Header value" class="header-value">
+    <button type="button" class="remove-btn">✖</button>
+  </div>
+  <button id="addHeaderBtn">+ Add Header</button>
+
   <button id="sendBtn">Send Request</button>
 
   <div class="response-section">
@@ -87,36 +123,42 @@
   </div>
 
   <script>
-    // Simple JSON syntax highlighter
+    // Syntax highlighting
     function syntaxHighlight(json) {
-      if (typeof json != 'string') {
-        json = JSON.stringify(json, undefined, 2);
-      }
-      json = json
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
+      if (typeof json != 'string') json = JSON.stringify(json, undefined, 2);
+      json = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       return json.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, match => {
         let cls = 'number';
         if (/^"/.test(match)) {
-          if (/:$/.test(match)) {
-            cls = 'key';
-          } else {
-            cls = 'string';
-          }
-        } else if (/true|false/.test(match)) {
-          cls = 'boolean';
-        } else if (/null/.test(match)) {
-          cls = 'null';
-        }
+          if (/:$/.test(match)) cls = 'key';
+          else cls = 'string';
+        } else if (/true|false/.test(match)) cls = 'boolean';
+        else if (/null/.test(match)) cls = 'null';
         return `<span class="${cls}">${match}</span>`;
       });
     }
 
+    // Add/remove header rows
+    const headersContainer = document.getElementById('headers-container');
+    document.getElementById('addHeaderBtn').addEventListener('click', () => {
+      const div = document.createElement('div');
+      div.className = 'headers-grid';
+      div.innerHTML = `
+        <input type="text" placeholder="Header name" class="header-key">
+        <input type="text" placeholder="Header value" class="header-value">
+        <button type="button" class="remove-btn">✖</button>
+      `;
+      headersContainer.parentNode.insertBefore(div, document.getElementById('addHeaderBtn'));
+      div.querySelector('.remove-btn').addEventListener('click', () => div.remove());
+    });
+    document.querySelector('.remove-btn').addEventListener('click', (e) => e.target.parentNode.remove());
+
+    // Send request
     document.getElementById('sendBtn').addEventListener('click', async () => {
       const url = document.getElementById('url').value.trim();
       const method = document.getElementById('method').value;
       const bodyText = document.getElementById('body').value.trim();
+      const includeCreds = document.getElementById('includeCreds').checked;
 
       if (!url) {
         alert("Please enter a URL!");
@@ -125,8 +167,20 @@
 
       const options = {
         method,
-        headers: { "Content-Type": "application/json" }
+        headers: {},
+        credentials: includeCreds ? "include" : "omit"
       };
+
+      // Collect custom headers
+      document.querySelectorAll('.headers-grid').forEach(grid => {
+        const key = grid.querySelector('.header-key')?.value.trim();
+        const val = grid.querySelector('.header-value')?.value.trim();
+        if (key) options.headers[key] = val;
+      });
+
+      // Default Content-Type if POST
+      if (method === "POST" && !options.headers["Content-Type"])
+        options.headers["Content-Type"] = "application/json";
 
       if (method === "POST" && bodyText) {
         try {
@@ -146,7 +200,6 @@
         const resText = await res.text();
 
         document.getElementById('status').textContent = `${res.status} ${res.statusText}`;
-
         let headers = "";
         res.headers.forEach((v, k) => headers += `${k}: ${v}\n`);
         document.getElementById('headers').textContent = headers;
@@ -157,7 +210,6 @@
         } catch {
           document.getElementById('response').textContent = resText;
         }
-
       } catch (err) {
         document.getElementById('status').textContent = "Request Failed";
         document.getElementById('response').textContent = err.toString();
@@ -166,3 +218,5 @@
   </script>
 </body>
 </html>
+
+
